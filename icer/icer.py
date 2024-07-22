@@ -41,6 +41,16 @@ class IcePlot:
         self.cluster_features = None
 
     def ice_data(self, return_data=True, outlier_removal=True):
+        '''
+        Description - Generate predictions for different values of the feature to be used in the ICE plot
+
+        Parameters
+        ----------
+        return_data : boolean
+            Indicate whether you would like the method to return the generated dataset of values and predictions
+        outlier_removal : boolean
+            Indicate whether extreme values on the feature should be removed during data generation
+        '''
         ice_frame = self.x.copy()
 
         if outlier_removal and self.feature_type == 'numeric':
@@ -66,6 +76,16 @@ class IcePlot:
 
 
     def ice_plot(self, subsample=100, return_plot=False):
+        '''
+        Description - Generates the ICE plot
+                      If slope_generator has not been run it will be run with a 2nd degree polynomial fit
+                      If cluster_generator has been run lines will be colored based on the cluster they belong to
+
+        subsample : int
+            Number of lines to include on the ICE plot
+        return_plot : boolean
+            Indicator for whether to return the fig, ax objects for further customization
+        '''
         if self.pdp is None:
             self.ice_data(return_data=False)
 
@@ -99,6 +119,15 @@ class IcePlot:
             return fig, ax
 
     def slope_generator(self, polynomial=2):
+        '''
+        Description - Estimates the slope on the predictions for each observation in the x dataframe
+
+        Parameters
+        ----------
+        polynomial : int
+            The degree of polynomial to be used in estimating the slope
+            Default 2
+        '''
         if self.pdp is None:
             self.ice_data(return_data=False)
 
@@ -117,11 +146,22 @@ class IcePlot:
 
         return None
 
-    def cluster_generator(self, n_clusters=2, feature_reduction=False):
+    def cluster_generator(self, n_clusters=2, feature_reduction=None):
+        '''
+        Description - Separates individuals out into kmeans clusters based on their slopes and other features included
+                      in the x dataframe
+
+        Parameters
+        ----------
+        n_clusters : int
+            Number of clusters to generate
+            Default 2
+        feature_reduction : int
+            Number of x features to use in clustering
+            Default None, which will include all features
+        '''
         # Add feature selection for the clusters
             # Forward Feature Selection, calculate the PDP of each cluster and maximize distance between the PDP lines
-        if self.pdp is None:
-            self.ice_data(return_data=False)
         if self.slopes is None:
             self.slope_generator()
 
@@ -131,7 +171,7 @@ class IcePlot:
                                      columns=cluster_frame.columns, index=cluster_frame.index)
 
         self.cluster_features = cluster_frame.columns
-        if feature_reduction:
+        if feature_reduction is not None:
             pass
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=52)
@@ -144,7 +184,20 @@ class IcePlot:
 
         return None
 
-    def cluster_analysis(self, cluster_number=0):
+    def cluster_analysis(self, cluster_number=0, return_plot=False):
+        '''
+        Description - Provides violin plots showing the differences between a cluster and all other observations
+
+        Parameters
+        ----------
+        cluster_number : int
+            Which cluster to analyze; clusters start at 0 and end at the n_clusters specified in cluster_generator
+        return_plot : boolean
+            Indicator for whether to return the fig, ax objects for further customization
+        '''
+        if self.clusters is None:
+            self.cluster_generator()
+
         cluster_frame = self.clusters.copy()
 
         palette = sea.color_palette('gist_rainbow', n_colors=cluster_frame['cluster'].nunique()+1)
@@ -176,7 +229,8 @@ class IcePlot:
 
         fig.suptitle(f'Analysis of Cluster {cluster_number}')
 
-        return fig, axes
+        if return_plot:
+            return fig, axes
 
     def binning(self, ice_frame):
         optimal_bin_count = int(np.ceil(np.log2(len(ice_frame[self.feature]))) + 1)
@@ -206,29 +260,3 @@ def coef_getter(df, n=1):
         return [model.coeffs[i] for i in range(n+1)] + [total_movement]
     except IndexError:
         return [0 for i in range(n+2)]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -7,6 +7,7 @@ from sklearn.cluster import KMeans
 import seaborn as sea
 import pandas as pd
 import numpy as np
+import warnings
 
 ########
 # ICER #
@@ -67,7 +68,8 @@ class IcePlot:
                                          'value': value,
                                          'prediction': self.estimator.predict_proba(ice_frame)[:, 1]})
 
-            self.freezer = pd.concat([self.freezer, append_frame], axis=0)
+            with warnings.catch_warnings(action='ignore'):
+                self.freezer = pd.concat([self.freezer, append_frame], axis=0)
 
         self.pdp = self.freezer.groupby('value')['prediction'].mean().rename('prediction').reset_index()
 
@@ -132,7 +134,8 @@ class IcePlot:
             self.ice_data(return_data=False)
 
         coef_names = [f'x**{i}' for i in np.arange(polynomial, 0, -1)] + ['Intercept', 'Total Movement']
-        slopes = pd.DataFrame(self.freezer.groupby('index').apply(coef_getter, polynomial), columns=['coeffs'])
+        slopes = pd.DataFrame(self.freezer.groupby('index').apply(coef_getter, include_groups=False, n=polynomial),
+                              columns=['coeffs'])
         slopes = pd.DataFrame(slopes['coeffs'].tolist(), columns=coef_names, index=slopes.index)
 
         slopes['ranking'] = MinMaxScaler((0.2, 0.8)).fit_transform(slopes['Total Movement'].values.reshape(-1, 1))
@@ -231,6 +234,10 @@ class IcePlot:
 
         if return_plot:
             return fig, axes
+
+    def coef(self, polynomial=2):
+        out = coef_getter(self.pdp, polynomial)
+        return pd.Series(out, index=[f'x**{i}' for i in np.arange(polynomial, 0, -1)] + ['Intercept', 'Total Movement'])
 
     def binning(self, ice_frame):
         optimal_bin_count = int(np.ceil(np.log2(len(ice_frame[self.feature]))) + 1)

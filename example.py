@@ -7,7 +7,7 @@ import seaborn as sea
 import numpy as np
 import matplotlib
 
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 
 #############
 # Load Data #
@@ -34,30 +34,15 @@ x = x.set_index(['Index1', 'Index2', 'Index3'])
 estimator = RandomForestClassifier()
 estimator.fit(x, y)
 
-
 ice = IcePlot(estimator, x, feature='sepal_length')
-ice.ice_data()
-ice.ice_plot()
+fig, ax = ice.ice_plot(return_plot=True)
+#fig.savefig('bw.png')
 
 ice.cluster_generator()
 
-ice.ice_plot()
+fig, ax = ice.ice_plot(return_plot=True)
+fig.savefig('cluster.png')
+
 ice.cluster_analysis(1)
 
-ice = IcePlot(estimator, x, feature='petal_width_category', feature_type='numeric')
-ice.ice_data('petal_width_category')
-ice.ice_plot()
-
-
-model = np.poly1d(np.polyfit(ice.pdp['value'], ice.pdp['prediction'], 2))
-myline = np.linspace(4, 8, 100)
-
-fig, ax = plt.subplots(figsize=(16, 9))
-ax.scatter(ice.pdp['value'], ice.pdp['prediction'])
-ax.plot(myline, model(myline))
-
-
-for i in ice.freezer['index'].unique():
-    print(i)
-    subset = ice.freezer.loc[ice.freezer['index'] == i]
-    coef_getter(subset)
+ice.coef()

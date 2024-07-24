@@ -88,34 +88,62 @@ class IcePlot:
         return_plot : boolean
             Indicator for whether to return the fig, ax objects for further customization
         '''
-        if self.pdp is None:
-            self.ice_data(return_data=False)
-
-        sampled = np.random.choice(self.freezer['index'].unique(), size=subsample, replace=False)
+        if self.slopes is None:
+            self.slope_generator()
 
         fig, ax = plt.subplots(figsize=(16, 9))
-        for i in range(subsample):
-            subset = self.freezer.loc[self.freezer['index'] == sampled[i]]
 
-            if self.slopes is None:
-                self.slope_generator()
-
+        if subsample is None:
             if self.clusters is not None:
-                color_num = self.clusters.loc[self.clusters['index_tuple'] == sampled[i], 'cluster'].item()
-                plot_kwargs = {'color': sea.color_palette('gist_rainbow',
-                                                          self.clusters['cluster'].nunique()).as_hex()[color_num],
-                               'alpha': 0.25}
+                quantiles = self.clusters.reset_index()[['index', 'cluster']]
+                quantiles = self.freezer.merge(quantiles, on='index', how='left')
+
+                quantiles = quantiles.groupby('cluster').apply(confidence, include_groups=False).reset_index()
+
+                for cluster in sorted(quantiles.cluster.unique()):
+                    color = sea.color_palette('cubehelix',
+                                              self.clusters['cluster'].nunique()).as_hex()[cluster]
+
+                    subset = quantiles.loc[quantiles['cluster'] == cluster]
+
+                    ax.fill_between(subset.value, subset.lower, subset.upper,
+                                    alpha=0.3, color=color)
+                    ax.plot(subset.value, subset.lower, color=color)
+                    ax.plot(subset.value, subset.upper, color=color)
+                    ax.plot(subset.value, subset.mid,
+                            color=color, alpha=1, ls='dashed', label=f'Cluster {cluster}')
+
+                ax.legend(loc='best')
 
             else:
-                color_num = self.slopes.loc[self.slopes.index == sampled[i], 'ranking'].item()
-                plot_kwargs = {'color': sea.color_palette('binary', 100).as_hex()[color_num],
-                               'alpha': 0.25}
+                quantiles = confidence(self.freezer)
 
-            # Update this to vary based on slope color;
-            #   use kwargs to allow it to vary depending on if slopes have been defined
-            ax.plot(subset['value'], subset['prediction'], **plot_kwargs)
+                ax.fill_between(quantiles.index, quantiles.lower, quantiles.upper,
+                                alpha=0.3, color='gray')
+                ax.plot(quantiles.index, quantiles.lower, color='gray')
+                ax.plot(quantiles.index, quantiles.upper, color='gray')
+                ax.plot(quantiles.index, quantiles.mid, color='black', alpha=1, ls='dashed')
+                fig.savefig('shaded.png')
 
-        ax.plot(self.pdp['value'], self.pdp['prediction'], color='red', ls='dashed')
+        else:
+            sampled = np.random.choice(self.freezer['index'].unique(), size=subsample, replace=False)
+            for i in range(subsample):
+                subset = self.freezer.loc[self.freezer['index'] == sampled[i]]
+
+                if self.clusters is not None:
+                    color_num = self.clusters.loc[self.clusters['index_tuple'] == sampled[i], 'cluster'].item()
+                    plot_kwargs = {'color': sea.color_palette('gist_rainbow',
+                                                              self.clusters['cluster'].nunique()).as_hex()[color_num],
+                                   'alpha': 0.25}
+
+                else:
+                    color_num = self.slopes.loc[self.slopes.index == sampled[i], 'ranking'].item()
+                    plot_kwargs = {'color': sea.color_palette('binary', 100).as_hex()[color_num],
+                                   'alpha': 0.25}
+
+                ax.plot(subset['value'], subset['prediction'], **plot_kwargs)
+
+            ax.plot(self.pdp['value'], self.pdp['prediction'], color='red', ls='dashed')
 
         if return_plot:
             return fig, ax
@@ -138,11 +166,12 @@ class IcePlot:
                               columns=['coeffs'])
         slopes = pd.DataFrame(slopes['coeffs'].tolist(), columns=coef_names, index=slopes.index)
 
-        slopes['ranking'] = MinMaxScaler((0.2, 0.8)).fit_transform(slopes['Total Movement'].values.reshape(-1, 1))
+        slopes['ranking'] = MinMaxScaler((0.2, 1)).fit_transform(slopes['Total Movement'].values.reshape(-1, 1))
         slopes['ranking'] = (slopes['ranking']*100).round().astype(int)
 
-        # Add in checks to only do this if it actually is a multi-index, idk what will happen if it's not
-        slopes.index = pd.MultiIndex.from_tuples(slopes.index)
+        if isinstance(slopes.index, pd.MultiIndex):
+            slopes.index = pd.MultiIndex.from_tuples(slopes.index)
+
         slopes.index.names = self.x.index.names
 
         self.slopes = slopes.copy()
@@ -267,3 +296,14 @@ def coef_getter(df, n=1):
         return [model.coeffs[i] for i in range(n+1)] + [total_movement]
     except IndexError:
         return [0 for i in range(n+2)]
+
+#######################
+# Confidence Interval #
+#######################
+def confidence(df):
+    df = df.groupby('value')['prediction'].quantile([0.025, 0.5, 0.975]).reset_index()
+    df.columns = ['value', 'quantile', 'prediction']
+    df = df.pivot(index='value', columns='quantile', values='prediction')
+    df.columns = ['lower', 'mid', 'upper']
+
+    return df

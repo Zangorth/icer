@@ -3,6 +3,7 @@
 ###########
 from sklearn.preprocessing import MinMaxScaler
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 from sklearn.cluster import KMeans
 import seaborn as sea
 import pandas as pd
@@ -60,7 +61,7 @@ class IcePlot:
 
         bins = self.binning(ice_frame)
 
-        # Parallelize this as necessary
+        # TODO: Parallelize this as necessary
         for value in bins:
             ice_frame[self.feature] = value
             append_frame = pd.DataFrame({'index': ice_frame.index.tolist(),
@@ -127,14 +128,19 @@ class IcePlot:
 
         else:
             sampled = np.random.choice(self.freezer['index'].unique(), size=subsample, replace=False)
+            cluster_colors = {}
+
             for i in range(subsample):
                 subset = self.freezer.loc[self.freezer['index'] == sampled[i]]
 
                 if self.clusters is not None:
                     color_num = self.clusters.loc[self.clusters['index_tuple'] == sampled[i], 'cluster'].item()
-                    plot_kwargs = {'color': sea.color_palette('gist_rainbow',
+                    plot_kwargs = {'color': sea.color_palette('cubehelix',
                                                               self.clusters['cluster'].nunique()).as_hex()[color_num],
                                    'alpha': 0.25}
+
+                    if color_num not in cluster_colors.keys():
+                        cluster_colors[color_num] = plot_kwargs['color']
 
                 else:
                     color_num = self.slopes.loc[self.slopes.index == sampled[i], 'ranking'].item()
@@ -144,6 +150,11 @@ class IcePlot:
                 ax.plot(subset['value'], subset['prediction'], **plot_kwargs)
 
             ax.plot(self.pdp['value'], self.pdp['prediction'], color='red', ls='dashed')
+
+            if self.clusters is not None:
+                legend_lines = [Line2D([0], [0], color=cluster_colors[i])
+                                for i in range(len(cluster_colors))]
+                ax.legend(legend_lines, [f'Cluster {i}' for i in range(len(cluster_colors))], loc='best')
 
         if return_plot:
             return fig, ax
@@ -232,8 +243,8 @@ class IcePlot:
 
         cluster_frame = self.clusters.copy()
 
-        palette = sea.color_palette('gist_rainbow', n_colors=cluster_frame['cluster'].nunique()+1)
-        palette = [palette[cluster_number], palette[-1]]
+        palette = sea.color_palette('cubehelix', n_colors=cluster_frame['cluster'].nunique())
+        palette = [palette[cluster_number], '#808080']
 
         cluster_frame['coi'] = np.where(cluster_frame['cluster'] == cluster_number,
                                         f'Cluster {cluster_number}', 'Everyone Else')
@@ -241,7 +252,7 @@ class IcePlot:
         cluster_frame = cluster_frame.sort_values('coi')
 
         cluster_frame = cluster_frame.drop([col for col in cluster_frame.columns if '**' in col] +
-                                           ['index_tuple', 'cluster'],
+                                           ['index_tuple', 'cluster', self.feature],
                                            axis=1)
 
         importance = cluster_frame.groupby('coi').mean().diff().mean().abs().sort_values(ascending=False)[0:5]
@@ -258,8 +269,8 @@ class IcePlot:
                 axes[i].legend().set_visible(False)
 
             axes[i].set_yticks([])
-
-        fig.suptitle(f'Analysis of Cluster {cluster_number}')
+            axes[i].get_yaxis().set_visible(False)
+            axes[i].set_xlabel(importance.index[i])
 
         if return_plot:
             return fig, axes

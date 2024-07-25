@@ -1,1 +1,5 @@
 .idea/*
+*.png
+*.pptx
+*.parquet
+*.pkl
